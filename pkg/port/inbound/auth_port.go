@@ -10,7 +10,7 @@ type AuthPort interface {
 	GenerateAuthorizationURL(ctx context.Context, provider model.IdentityProvider, status string, opts *model.AuthorizationOptions) (string, error)
 
 	// Change authorizationCode and token
-	ExchangeAuthorizationCode(ctx context.Context, code, redirectURI, codeVerifier string, provider model.IdentityProvider)
+	ExchangeAuthorizationCode(ctx context.Context, code, redirectURI, codeVerifier string, provider model.IdentityProvider) (*model.TokenInfo, error)
 
 	// Verify token
 	VerifyToken(ctx context.Context, token string) (*model.VerificationResult, error)
