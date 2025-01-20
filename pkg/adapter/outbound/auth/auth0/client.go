@@ -10,7 +10,7 @@ import (
 
 	"github.com/Takayuki-Y5991/go-authentications/pkg/config"
 	"github.com/Takayuki-Y5991/go-authentications/pkg/domain/model"
-	"github.com/Takayuki-Y5991/go-authentications/pkg/port/inbound"
+	"github.com/Takayuki-Y5991/go-authentications/pkg/port/outbound"
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 )
@@ -23,7 +23,7 @@ type Auth0Provider struct {
 	logger       *zap.Logger
 }
 
-func NewAuth0Adapter(config *config.Config, logger *zap.Logger) (inbound.AuthPort, error) {
+func NewAuth0Adapter(config *config.Config, logger *zap.Logger) (outbound.AuthPort, error) {
 	oauth2Config := &oauth2.Config{
 		ClientID:     config.ClientID,
 		ClientSecret: config.ClientSecret,

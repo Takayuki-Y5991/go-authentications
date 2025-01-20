@@ -2,172 +2,171 @@ syntax = "proto3";
 
 package auth.v1;
 
-option go_package = "your-project-name/gen/auth/v1;authv1";
+option go_package = "github.com/Takayuki-Y5991/go-authentications/gen/proto/auth/v1;authv1";
 
-// AuthenticationService handles all authentication related operations
+// AuthenticationService provides authentication and authorization operations
 service AuthenticationService {
-  // OAuth2.0 authorization code flow
+  // GenerateAuthorizationURL generates an OAuth2.0 authorization URL
+  rpc GenerateAuthorizationURL(GenerateAuthorizationURLRequest) returns (GenerateAuthorizationURLResponse) {}
+
+  // ExchangeAuthorizationCode exchanges an OAuth2.0 authorization code for tokens
   rpc ExchangeAuthorizationCode(ExchangeAuthorizationCodeRequest) returns (TokenResponse) {}
-  
-  // Token operations
+
+  // VerifyToken validates an access token
   rpc VerifyToken(VerifyTokenRequest) returns (VerifyTokenResponse) {}
+
+  // RefreshToken obtains a new access token using a refresh token
   rpc RefreshToken(RefreshTokenRequest) returns (TokenResponse) {}
-  rpc RevokeToken(RevokeTokenRequest) returns (RevokeTokenResponse) {}
-  
-  // User information
+
+  // GetUserInfo retrieves authenticated user information
   rpc GetUserInfo(GetUserInfoRequest) returns (UserInfoResponse) {}
-  
-  // MFA operations
-  rpc InitiateMFA(InitiateMFARequest) returns (InitiateMFAResponse) {}
-  rpc VerifyMFAChallenge(VerifyMFAChallengeRequest) returns (VerifyMFAChallengeResponse) {}
+
+  // GetMFAStatus retrieves the current MFA configuration and status
   rpc GetMFAStatus(GetMFAStatusRequest) returns (GetMFAStatusResponse) {}
+
+  // CompleteMFAChallenge verifies an MFA challenge and returns a new token
+  rpc CompleteMFAChallenge(CompleteMFAChallengeRequest) returns (TokenResponse) {}
 }
 
-// Request/Response messages for authorization code flow
+// Request to generate an OAuth2.0 authorization URL
+message GenerateAuthorizationURLRequest {
+  IdentityProvider provider = 1;        // Identity provider to use
+  string state = 2;                     // CSRF protection state
+  string redirect_uri = 3;              // OAuth2.0 redirect URI
+  string code_challenge = 4;            // PKCE code challenge
+  string code_challenge_method = 5;      // PKCE code challenge method
+  repeated string scope = 6;            // Requested OAuth2.0 scopes
+  map<string, string> extra = 7;        // Additional provider-specific parameters
+}
+
+message GenerateAuthorizationURLResponse {
+  string url = 1;                      // Generated authorization URL
+}
+
+// Request to exchange authorization code for tokens
 message ExchangeAuthorizationCodeRequest {
-  string code = 1;                    // Authorization code from OAuth provider
-  string redirect_uri = 2;            // Redirect URI used in the authorization request
-  string code_verifier = 3;           // PKCE code verifier
-  string state = 4;                   // State parameter for CSRF protection
-  IdentityProvider provider = 5;      // Identity provider used for authentication
+  string code = 1;                     // Authorization code from OAuth provider
+  string redirect_uri = 2;             // Must match the original redirect URI
+  string code_verifier = 3;            // PKCE code verifier
+  IdentityProvider provider = 4;       // Identity provider used
 }
 
+// Common token response format
 message TokenResponse {
-  string access_token = 1;
-  string refresh_token = 2;
-  int64 expires_in = 3;
-  string token_type = 4;              // Always "Bearer"
-  string id_token = 5;                // OpenID Connect ID token
-  repeated string scope = 6;
-  bool mfa_required = 7;              // Indicates if MFA is required
-  string mfa_token = 8;               // Token for MFA flow if required
+  string access_token = 1;             // JWT access token
+  string refresh_token = 2;            // Refresh token (if requested)
+  int64 expires_in = 3;               // Token expiration in seconds
+  string token_type = 4;              // Token type (usually "Bearer")
+  repeated string scope = 5;          // Granted scopes
+  MFAStatus mfa_status = 6;          // Current MFA status
+  string mfa_token = 7;              // MFA token (if MFA is required)
+  string id_token = 8;               // OpenID Connect ID token (if requested)
 }
 
-// Token verification
+// Token verification request
 message VerifyTokenRequest {
-  string token = 1;
+  string token = 1;                   // Token to verify
 }
 
+// Token verification response
 message VerifyTokenResponse {
-  bool is_valid = 1;
-  repeated string scopes = 2;
-  int64 expires_at = 3;
-  TokenType token_type = 4;
-  bool mfa_verified = 5;              // Whether MFA verification is complete
+  bool is_valid = 1;                 // Whether the token is valid
+  repeated string scopes = 2;        // Token's granted scopes
+  int64 expires_at = 3;             // Token expiration timestamp
+  bool mfa_completed = 4;           // Whether MFA is completed for this token
 }
 
-// Token refresh
+// Token refresh request
 message RefreshTokenRequest {
-  string refresh_token = 1;
-  repeated string scope = 2;          // Optional requested scopes
+  string refresh_token = 1;          // Refresh token to use
 }
 
-// Token revocation
-message RevokeTokenRequest {
-  string token = 1;
-  TokenType token_type = 2;
-}
-
-message RevokeTokenResponse {
-  bool revoked = 1;
-}
-
-// User information
+// User information request
 message GetUserInfoRequest {
-  string access_token = 1;
+  string access_token = 1;           // Access token for authentication
 }
 
+// User information response
 message UserInfoResponse {
-  string subject = 1;                 // Unique identifier
-  string email = 2;
-  bool email_verified = 3;
-  string name = 4;
-  repeated string roles = 5;
-  IdentityProvider provider = 6;      // Identity provider used
-  string provider_user_id = 7;        // User ID from the provider
-  MFAStatus mfa_status = 8;          // Current MFA status
+  string id = 1;                    // Unique user identifier
+  string email = 2;                 // User's email address
+  bool email_verified = 3;          // Whether email is verified
+  string name = 4;                  // User's full name
+  repeated string roles = 5;        // User's roles/permissions
+  IdentityProvider provider = 6;    // Identity provider used
+  MFAInfo mfa_info = 7;            // MFA configuration
+  map<string, string> metadata = 8; // Additional user metadata
 }
 
-// MFA related messages
-message InitiateMFARequest {
-  string access_token = 1;
-  MFAMethod method = 2;
-}
-
-message InitiateMFAResponse {
-  string challenge_id = 1;
-  int64 expires_at = 2;
-  MFAMethod method = 3;
-  string delivery_destination = 4;    // Masked phone/email where code was sent
-}
-
-message VerifyMFAChallengeRequest {
-  string challenge_id = 1;
-  string code = 2;
-  string mfa_token = 3;
-}
-
-message VerifyMFAChallengeResponse {
-  bool verified = 1;
-  string access_token = 2;            // New access token with MFA claim
-}
-
+// MFA status request
 message GetMFAStatusRequest {
-  string access_token = 1;
+  string access_token = 1;          // Access token for authentication
 }
 
+// MFA information structure
+message MFAInfo {
+  MFAStatus status = 1;                    // Current MFA status
+  repeated MFAMethod enabled_methods = 2;   // Enabled MFA methods
+  MFAMethod default_method = 3;            // Default MFA method
+  int64 last_verified_at = 4;              // Last MFA verification timestamp
+}
+
+// MFA status response
 message GetMFAStatusResponse {
-  bool enabled = 1;
-  repeated MFAMethod available_methods = 2;
-  MFAMethod default_method = 3;
+  MFAInfo mfa_info = 1;            // MFA configuration and status
 }
 
-// Enums
+// MFA challenge completion request
+message CompleteMFAChallengeRequest {
+  string access_token = 1;          // Current access token
+  string mfa_token = 2;            // MFA challenge token
+}
+
+// Supported identity providers
 enum IdentityProvider {
   IDENTITY_PROVIDER_UNSPECIFIED = 0;
   IDENTITY_PROVIDER_GOOGLE = 1;
   IDENTITY_PROVIDER_GITHUB = 2;
 }
 
+// Token types
 enum TokenType {
   TOKEN_TYPE_UNSPECIFIED = 0;
   TOKEN_TYPE_ACCESS = 1;
   TOKEN_TYPE_REFRESH = 2;
-  TOKEN_TYPE_MFA = 3;
 }
 
+// MFA methods
 enum MFAMethod {
   MFA_METHOD_UNSPECIFIED = 0;
-  MFA_METHOD_TOTP = 1;               // Time-based One-Time Password
-  MFA_METHOD_SMS = 2;
-  MFA_METHOD_EMAIL = 3;
+  MFA_METHOD_TOTP = 1;            // Time-based One-Time Password
+  MFA_METHOD_SMS = 2;             // SMS verification
+  MFA_METHOD_EMAIL = 3;           // Email verification
 }
 
+// MFA status values
 enum MFAStatus {
   MFA_STATUS_UNSPECIFIED = 0;
-  MFA_STATUS_DISABLED = 1;
-  MFA_STATUS_ENABLED = 2;
-  MFA_STATUS_REQUIRED = 3;           // MFA is mandatory for this user
+  MFA_STATUS_DISABLED = 1;        // MFA is not enabled
+  MFA_STATUS_ENABLED = 2;         // MFA is enabled
+  MFA_STATUS_REQUIRED = 3;        // MFA is required for this user
 }
 
-// Error handling
-message AuthError {
-  ErrorCode code = 1;
-  string message = 2;
-  map<string, string> details = 3;
-}
-
+// Error code enumeration
 enum ErrorCode {
   ERROR_UNSPECIFIED = 0;
   ERROR_INVALID_TOKEN = 1;
   ERROR_TOKEN_EXPIRED = 2;
-  ERROR_INVALID_GRANT = 3;
-  ERROR_INVALID_REQUEST = 4;
-  ERROR_UNAUTHORIZED_CLIENT = 5;
-  ERROR_INVALID_SCOPE = 6;
-  ERROR_MFA_REQUIRED = 7;
-  ERROR_MFA_INVALID = 8;
-  ERROR_MFA_EXPIRED = 9;
-  ERROR_PROVIDER_NOT_SUPPORTED = 10;
-  ERROR_SERVER_ERROR = 11;
+  ERROR_INVALID_REQUEST = 3;
+  ERROR_PROVIDER_NOT_SUPPORTED = 4;
+  ERROR_MFA_REQUIRED = 5;
+  ERROR_MFA_INVALID = 6;
+  ERROR_SERVER_ERROR = 7;
+}
+
+// Error details
+message Error {
+  ErrorCode code = 1;
+  string message = 2;
+  map<string, string> details = 3;
 }
