@@ -41,8 +41,11 @@ tools:
 
 # Run linter
 lint:
-	go vet ./...
-	buf lint
+	golangci-lint run
+
+# Run linter
+lint-fix:
+	golangci-lint run --fix
 
 # Run the service locally
 run:
