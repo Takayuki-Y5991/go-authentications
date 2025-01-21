@@ -12,6 +12,7 @@ import (
 
 func main() {
 	logger, _ := zap.NewProduction()
+	//nolint:errcheck // Sync error is expected during shutdown
 	defer logger.Sync()
 
 	cfg, err := config.LoadConfig(".env", ".env.local")

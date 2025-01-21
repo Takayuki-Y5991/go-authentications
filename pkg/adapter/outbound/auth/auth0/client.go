@@ -107,7 +107,7 @@ func (a *Auth0Provider) ExchangeAuthorizationCode(ctx context.Context, code, red
 	return &model.TokenInfo{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
-		ExpiresIn:    int64(token.Expiry.Sub(time.Now()).Seconds()),
+		ExpiresIn:    int64(time.Until(token.Expiry).Seconds()),
 		TokenType:    token.TokenType,
 		Scopes:       scope,
 		IDToken:      token.Extra("id_token").(string),
@@ -154,7 +154,7 @@ func (a *Auth0Provider) RefreshToken(ctx context.Context, refreshToken string) (
 	return &model.TokenInfo{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
-		ExpiresIn:    int64(token.Expiry.Sub(time.Now()).Seconds()),
+		ExpiresIn:    int64(time.Until(token.Expiry).Seconds()),
 		TokenType:    token.TokenType,
 		MFAStatus:    model.MFAStatusDisabled,
 		IssuedAt:     time.Now(),
