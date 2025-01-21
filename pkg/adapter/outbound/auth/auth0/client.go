@@ -26,19 +26,19 @@ type Auth0Provider struct {
 
 func NewAuth0Adapter(config *config.Config, logger *zap.Logger) (outbound.AuthPort, error) {
 	oauth2Config := &oauth2.Config{
-		ClientID:     config.ClientID,
-		ClientSecret: config.ClientSecret,
-		RedirectURL:  config.RedirectURL,
+		ClientID:     config.Auth0.ClientID,
+		ClientSecret: config.Auth0.ClientSecret,
+		RedirectURL:  config.Auth0.RedirectURL,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  fmt.Sprintf("https://%s/authorize", config.Domain),
-			TokenURL: fmt.Sprintf("https://%s/oauth/token", config.Domain),
+			AuthURL:  fmt.Sprintf("https://%s/authorize", config.Auth0.Domain),
+			TokenURL: fmt.Sprintf("https://%s/oauth/token", config.Auth0.Domain),
 		},
 		Scopes: []string{"openid", "profile", "email", "offline_access"},
 	}
 	return &Auth0Provider{
 		oauth2Config: oauth2Config,
-		domain:       config.Domain,
-		audience:     config.Audience,
+		domain:       config.Auth0.Domain,
+		audience:     config.Auth0.Audience,
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		logger:       logger,
 	}, nil
@@ -107,7 +107,7 @@ func (a *Auth0Provider) ExchangeAuthorizationCode(ctx context.Context, code, red
 	return &model.TokenInfo{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
-		ExpiresIn:    int64(token.Expiry.Sub(time.Now()).Seconds()),
+		ExpiresIn:    int64(time.Until(token.Expiry).Seconds()),
 		TokenType:    token.TokenType,
 		Scopes:       scope,
 		IDToken:      token.Extra("id_token").(string),
@@ -154,7 +154,7 @@ func (a *Auth0Provider) RefreshToken(ctx context.Context, refreshToken string) (
 	return &model.TokenInfo{
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
-		ExpiresIn:    int64(token.Expiry.Sub(time.Now()).Seconds()),
+		ExpiresIn:    int64(time.Until(token.Expiry).Seconds()),
 		TokenType:    token.TokenType,
 		MFAStatus:    model.MFAStatusDisabled,
 		IssuedAt:     time.Now(),

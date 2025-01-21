@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/Takayuki-Y5991/go-authentications/pkg/adapter/inbound/grpc"
@@ -13,15 +12,12 @@ import (
 
 func main() {
 	logger, _ := zap.NewProduction()
+	//nolint:errcheck // Sync error is expected during shutdown
 	defer logger.Sync()
 
-	// Auth0の設定を環境変数から読み込み
-	cfg := &config.Config{
-		Domain:       os.Getenv("AUTH0_DOMAIN"),
-		ClientID:     os.Getenv("AUTH0_CLIENT_ID"),
-		ClientSecret: os.Getenv("AUTH0_CLIENT_SECRET"),
-		Audience:     os.Getenv("AUTH0_AUDIENCE"),
-		RedirectURL:  os.Getenv("AUTH0_REDIRECT_URL"),
+	cfg, err := config.LoadConfig(".env", ".env.local")
+	if err != nil {
+		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
 	// Auth0アダプターの初期化
@@ -35,8 +31,8 @@ func main() {
 	router := grpc.NewRouter(authHandler, logger)
 
 	serverConfig := grpc.ServerConfig{
-		Port:            50051,
-		ShutdownTimeout: 10 * time.Second,
+		Port:            cfg.Server.Port,
+		ShutdownTimeout: time.Duration(cfg.Server.ShutdownTimeout) * time.Second,
 	}
 	server := grpc.NewServer(router, logger, serverConfig)
 
