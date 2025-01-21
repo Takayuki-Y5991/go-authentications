@@ -1,7 +1,7 @@
-.PHONY: generate test clean build
+.PHONY: generate test clean build test-verbose test-coverage test-json
 
 # Go build tags
-BUILD_TAGS := 
+BUILD_TAGS :=
 
 # Build settings
 GOPATH := $(shell go env GOPATH)
@@ -38,15 +38,29 @@ tools:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 	go install github.com/bufbuild/buf/cmd/buf@latest
+	go install gotest.tools/gotestsum@latest
 
 # Run linter
 lint:
 	golangci-lint run
 
-# Run linter
+# Run linter with fixes
 lint-fix:
 	golangci-lint run --fix
 
 # Run the service locally
 run:
-	go run ./cmd/auth-service/main.go
+	go run ./cmd/main.go
+
+# Run verbose tests
+test-verbose:
+	gotestsum --format standard-verbose
+
+# Run tests with JSON output
+test-json:
+	gotestsum --format testname --jsonfile test-output.json
+
+# Run tests with coverage
+test-coverage:
+	gotestsum --format pkgname -- -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
