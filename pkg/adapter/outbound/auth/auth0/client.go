@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -185,8 +186,8 @@ func (a *Auth0Provider) GetUserInfo(ctx context.Context, accessToken string) (*m
 		Roles         []string               `json:"https://your-namespace/roles"`
 		Metadata      map[string]interface{} `json:"user_metadata"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&userinfo); err != nil {
-		return nil, fmt.Errorf("failed to decode user info %w", err)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&userinfo); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
 	}
 
 	return &model.UserInfo{
