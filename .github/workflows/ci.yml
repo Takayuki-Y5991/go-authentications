@@ -3,8 +3,22 @@ name: CI
 on:
   push:
     branches: [ develop ]
+    paths:
+      - 'cmd/**'
+      - 'test/**'
+      - '.github/**'
+      - 'pkg/**'
+      - 'gen/**'
+      - 'proto/**'
   pull_request:
     branches: [ develop ]
+    paths:
+      - 'cmd/**'
+      - 'test/**'
+      - '.github/**'
+      - 'pkg/**'
+      - 'gen/**'
+      - 'proto/**'
 
 jobs:
   test:
