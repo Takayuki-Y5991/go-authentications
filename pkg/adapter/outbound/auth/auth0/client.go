@@ -47,9 +47,11 @@ func NewAuth0Adapter(config *config.Config, logger *zap.Logger) (outbound.AuthPo
 // Auth0Providerに必要なメソッドを実装
 func (a *Auth0Provider) GenerateAuthorizationURL(ctx context.Context, provider model.IdentityProvider, status string, opts *model.AuthorizationOptions) (string, error) {
 	tmpConfig := *a.oauth2Config
+
 	if len(opts.Scope) > 0 {
 		tmpConfig.Scopes = append(tmpConfig.Scopes, opts.Scope...)
 	}
+
 	if opts.RedirectURI != "" {
 		tmpConfig.RedirectURL = opts.RedirectURI
 	}
