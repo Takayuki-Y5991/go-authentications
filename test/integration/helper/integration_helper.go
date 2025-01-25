@@ -21,6 +21,7 @@ type AuthIntegrationTestSuite struct {
 	suite.Suite
 	Ctx             context.Context
 	MockOAuthServer testcontainers.Container
+	GRPCServer      testcontainers.Container
 	AuthService     authv1.AuthenticationServiceClient
 	MockServerURL   string
 	conn            *grpc.ClientConn
@@ -33,6 +34,11 @@ func TestAuthIntegration(t *testing.T) {
 // SetupSuite はテストスイート全体の前準備を行います。
 func (s *AuthIntegrationTestSuite) SetupSuite() {
 	s.Ctx = context.Background()
+
+	// Start the gRPC server container
+	grpcServer, err := s.setupGRPCServer()
+	s.Require().NoError(err, "Failed to start gRPC server")
+	s.GRPCServer = grpcServer
 
 	// Mock OAuth2サーバーのコンテナを起動
 	mockServer, err := s.setupMockOAuthServer()
@@ -49,6 +55,44 @@ func (s *AuthIntegrationTestSuite) SetupSuite() {
 	s.Require().NoError(err, "Failed to setup gRPC connection")
 	s.conn = conn
 	s.AuthService = client
+}
+
+func (s *AuthIntegrationTestSuite) setupGRPCServer() (testcontainers.Container, error) {
+	req := testcontainers.ContainerRequest{
+		FromDockerfile: testcontainers.FromDockerfile{
+			Context:    "../../../",  // Path to the directory containing the Dockerfile
+			Dockerfile: "Dockerfile", // Name of the Dockerfile
+		},
+		ExposedPorts: []string{"50051/tcp"},
+		WaitingFor:   wait.ForLog("server started").WithStartupTimeout(2 * time.Minute), // Adjust this log message to match your server's startup log
+		Env: map[string]string{
+			"APP_ENV":                 "test", // テスト環境であることを明示
+			"AUTH0_DOMAIN":            s.MockServerURL,
+			"AUTH0_CLIENT_ID":         "test-client",
+			"AUTH0_CLIENT_SECRET":     "test-secret",
+			"AUTH0_AUDIENCE":          "test-api",
+			"AUTH0_REDIRECT_URL":      "http://localhost:3000/callback",
+			"SERVER_PORT":             "50051",
+			"SERVER_SHUTDOWN_TIMEOUT": "10",
+		},
+	}
+
+	container, err := testcontainers.GenericContainer(s.Ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Map the container's port to a host port
+	mappedPort, err := container.MappedPort(s.Ctx, "50051")
+	if err != nil {
+		return nil, fmt.Errorf("failed to map port 50051: %w", err)
+	}
+
+	s.T().Logf("gRPC server is running on port: %s", mappedPort.Port())
+	return container, nil
 }
 
 // setupMockOAuthServer はMock OAuth2サーバーのコンテナを設定し起動します。
@@ -105,19 +149,30 @@ func (s *AuthIntegrationTestSuite) TearDownSuite() {
 			s.T().Log("Failed to terminate mock OAuth server:", err)
 		}
 	}
+	if s.GRPCServer != nil {
+		err := s.GRPCServer.Terminate(s.Ctx)
+		if err != nil {
+			s.T().Log("Failed to terminate gRPC server:", err)
+		}
+	}
 	if s.conn != nil {
 		s.conn.Close()
 	}
 }
 
 func (s *AuthIntegrationTestSuite) setupGRPCConnection() (*grpc.ClientConn, authv1.AuthenticationServiceClient, error) {
-	// コンテキストにタイムアウトを設定し、リソースリークを防ぐ
-	ctx, cancel := context.WithTimeout(s.Ctx, 60*time.Second)
+	ctx, cancel := context.WithTimeout(s.Ctx, 180*time.Second) // Increased timeout
 	defer cancel()
 
-	// 新しい推奨APIであるNewClientを使用して接続を確立
+	// Get the mapped port for the gRPC server
+	mappedPort, err := s.GRPCServer.MappedPort(s.Ctx, "50051")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get mapped port for gRPC server: %w", err)
+	}
+
+	// Use the mapped port to connect to the gRPC server
 	conn, err := grpc.NewClient(
-		"localhost:50051",
+		fmt.Sprintf("localhost:%s", mappedPort.Port()), // Use the mapped port
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -126,18 +181,17 @@ func (s *AuthIntegrationTestSuite) setupGRPCConnection() (*grpc.ClientConn, auth
 
 	s.T().Logf("Initial connection state: %v", conn.GetState())
 
-	// より効率的な接続状態の監視ループ
-	// 初期状態を取得し、Ready状態になるまで監視を続ける
+	// Wait for the connection to be ready
 	for state := conn.GetState(); state != connectivity.Ready; {
-		// 状態変更を待機し、タイムアウトまたはエラーが発生した場合は失敗を報告
 		if !conn.WaitForStateChange(ctx, state) {
+			s.T().Logf("Connection timed out or failed, last state: %v", state)
 			return nil, nil, fmt.Errorf("connection timed out or failed, last state: %v", state)
 		}
-		// 新しい状態を取得して再評価
 		state = conn.GetState()
+		s.T().Logf("Connection state changed to: %v", state)
 	}
 
-	// 接続が確立されたら、認証サービスのクライアントを作成
+	// Create authentication service client
 	authClient := authv1.NewAuthenticationServiceClient(conn)
 	return conn, authClient, nil
 }

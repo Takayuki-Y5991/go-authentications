@@ -38,7 +38,6 @@ func NewAuth0Adapter(config *config.Config, logger *zap.Logger) (outbound.AuthPo
 	return &Auth0Provider{
 		oauth2Config: oauth2Config,
 		domain:       config.Auth0.Domain,
-		audience:     config.Auth0.Audience,
 		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		logger:       logger,
 	}, nil
