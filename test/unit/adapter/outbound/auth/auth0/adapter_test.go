@@ -186,7 +186,7 @@ func TestAuth0ProviderCompleteMFAChallenge(t *testing.T) {
 	mockAuthPort.AssertExpectations(t)
 }
 
-func TestAuth0ProviderGenerateAuthorizationURL_Error(t *testing.T) {
+func TestAuth0ProviderGenerateAuthorizationURLError(t *testing.T) {
 	tests := []struct {
 		name     string
 		provider model.IdentityProvider
@@ -235,7 +235,7 @@ func TestAuth0ProviderGenerateAuthorizationURL_Error(t *testing.T) {
 	}
 }
 
-func TestAuth0ProviderVerifyToken_EdgeCases(t *testing.T) {
+func TestAuth0ProviderVerifyTokenEdgeCases(t *testing.T) {
 	tests := []struct {
 		name       string
 		token      string

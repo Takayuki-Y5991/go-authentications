@@ -1,5 +1,7 @@
 {
     "cSpell.words": [
-        "envconfig"
+        "authv",
+        "envconfig",
+        "testcontainers"
     ]
 }

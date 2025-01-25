@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/Takayuki-Y5991/go-authentications/pkg/adapter/inbound/grpc"
@@ -15,7 +16,14 @@ func main() {
 	//nolint:errcheck // Sync error is expected during shutdown
 	defer logger.Sync()
 
-	cfg, err := config.LoadConfig(".env", ".env.local")
+	var cfg *config.Config
+	var err error
+	if os.Getenv("APP_ENV") != "test" {
+		cfg, err = config.LoadConfig(".env", ".env.local")
+	} else {
+		cfg, err = config.LoadConfig()
+	}
+
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}

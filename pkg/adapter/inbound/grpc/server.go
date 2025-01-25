@@ -38,6 +38,8 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.router.Setup()
 
+	s.logger.Info("gRPC server is listening", zap.String("address", lis.Addr().String()))
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGTERM, syscall.SIGINT)
 
