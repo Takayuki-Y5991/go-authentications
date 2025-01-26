@@ -19,19 +19,30 @@ import (
 type Auth0Provider struct {
 	oauth2Config *oauth2.Config
 	domain       string
-	audience     string
 	httpClient   *http.Client
 	logger       *zap.Logger
 }
 
 func NewAuth0Adapter(config *config.Config, logger *zap.Logger) (outbound.AuthPort, error) {
+	logger.Info("Auth0 configuration",
+		zap.String("domain", config.Auth0.Domain),
+		zap.String("clientID", config.Auth0.ClientID),
+		zap.String("redirectURL", config.Auth0.RedirectURL),
+		zap.String("tokenURL", fmt.Sprintf("http://%s/oauth/token", config.Auth0.Domain)),
+	)
+
+	domain := config.Auth0.Domain
+	if !strings.HasPrefix(domain, "http://") && !strings.HasPrefix(domain, "https://") {
+		domain = "https://" + domain
+	}
+
 	oauth2Config := &oauth2.Config{
 		ClientID:     config.Auth0.ClientID,
 		ClientSecret: config.Auth0.ClientSecret,
 		RedirectURL:  config.Auth0.RedirectURL,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  fmt.Sprintf("https://%s/authorize", config.Auth0.Domain),
-			TokenURL: fmt.Sprintf("https://%s/oauth/token", config.Auth0.Domain),
+			AuthURL:  fmt.Sprintf("%s/authorize", domain),
+			TokenURL: fmt.Sprintf("%s/oauth/token", domain),
 		},
 		Scopes: []string{"openid", "profile", "email", "offline_access"},
 	}
@@ -56,8 +67,12 @@ func (a *Auth0Provider) GenerateAuthorizationURL(ctx context.Context, provider m
 	}
 
 	authOpts := []oauth2.AuthCodeOption{
-		oauth2.SetAuthURLParam("audience", a.audience),
+		// grant_typeを追加
+		oauth2.SetAuthURLParam("grant_type", "authorization_code"),
+		// response_typeも追加
+		oauth2.SetAuthURLParam("response_type", "code"),
 	}
+
 	if opts.CodeChallenge != "" {
 		authOpts = append(authOpts,
 			oauth2.SetAuthURLParam("code_challenge", opts.CodeChallenge),
@@ -81,13 +96,20 @@ func (a *Auth0Provider) GenerateAuthorizationURL(ctx context.Context, provider m
 }
 
 func (a *Auth0Provider) ExchangeAuthorizationCode(ctx context.Context, code, redirectURI, codeVerifier string, provider model.IdentityProvider) (*model.TokenInfo, error) {
+	a.logger.Info("Exchanging authorization code",
+		zap.String("code", code),
+		zap.String("redirectURI", redirectURI),
+		zap.String("codeVerifier", codeVerifier),
+		zap.String("tokenURL", a.oauth2Config.Endpoint.TokenURL),
+	)
+
 	tmpConfig := *a.oauth2Config
 	if redirectURI != "" {
 		tmpConfig.RedirectURL = redirectURI
 	}
 
 	opts := []oauth2.AuthCodeOption{
-		oauth2.SetAuthURLParam("audience", a.audience),
+		oauth2.SetAuthURLParam("grant_type", "authorization_code"),
 	}
 
 	if codeVerifier != "" {

@@ -68,7 +68,6 @@ Create a `.env` file in the root directory with the following environment variab
 AUTH0_DOMAIN=your-auth0-domain
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
-AUTH0_AUDIENCE=https://api.example.com
 AUTH0_REDIRECT_URL=https://example.com/callback
 SERVER_PORT=50051
 SERVER_SHUTDOWN_TIMEOUT=10
