@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -25,6 +26,7 @@ type AuthIntegrationTestSuite struct {
 	AuthService     authv1.AuthenticationServiceClient
 	MockServerURL   string
 	conn            *grpc.ClientConn
+	Network         *testcontainers.DockerNetwork
 }
 
 func TestAuthIntegration(t *testing.T) {
@@ -34,6 +36,16 @@ func TestAuthIntegration(t *testing.T) {
 // SetupSuite はテストスイート全体の前準備を行います。
 func (s *AuthIntegrationTestSuite) SetupSuite() {
 	s.Ctx = context.Background()
+
+	net, err := network.New(s.Ctx,
+		network.WithDriver("bridge"),
+		network.WithAttachable(), // Make the network attachable
+		network.WithLabels(map[string]string{
+			"testcontainers": "true",
+		}),
+	)
+	s.Require().NoError(err, "Failed to create Docker network")
+	s.Network = net
 
 	// Start the gRPC server container
 	grpcServer, err := s.setupGRPCServer()
@@ -75,6 +87,7 @@ func (s *AuthIntegrationTestSuite) setupGRPCServer() (testcontainers.Container, 
 			"SERVER_PORT":             "50051",
 			"SERVER_SHUTDOWN_TIMEOUT": "10",
 		},
+		Networks: []string{s.Network.Name},
 	}
 
 	container, err := testcontainers.GenericContainer(s.Ctx, testcontainers.GenericContainerRequest{
@@ -106,6 +119,7 @@ func (s *AuthIntegrationTestSuite) setupMockOAuthServer() (testcontainers.Contai
 			}),
 			wait.ForLog("started server on address="), // Updated log message
 		),
+		Networks: []string{s.Network.Name},
 		Env: map[string]string{
 			"SERVER_PORT": "8080",
 			"LOG_LEVEL":   "debug",
@@ -157,6 +171,13 @@ func (s *AuthIntegrationTestSuite) TearDownSuite() {
 	}
 	if s.conn != nil {
 		s.conn.Close()
+	}
+
+	if s.Network != nil {
+		err := s.Network.Remove(s.Ctx)
+		if err != nil {
+			s.T().Log("Failed to remove Docker network:", err)
+		}
 	}
 }
 
