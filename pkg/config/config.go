@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -27,6 +28,9 @@ type ServerConfig struct {
 }
 
 func LoadConfig(files ...string) (*Config, error) {
+	if os.Getenv("APP_ENV") == "test" {
+		files = append(files, "../../.env.test") // Load .env.test for the test environment
+	}
 	for _, file := range files {
 		if err := godotenv.Load(file); err != nil {
 			continue

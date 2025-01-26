@@ -3,18 +3,23 @@ package helper
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
+	grpcD "github.com/Takayuki-Y5991/go-authentications/pkg/adapter/inbound/grpc"
 	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
 	authv1 "github.com/Takayuki-Y5991/go-authentications/gen/proto/auth/v1"
+	"github.com/Takayuki-Y5991/go-authentications/pkg/adapter/outbound/auth/auth0"
+	"github.com/Takayuki-Y5991/go-authentications/pkg/config"
+	"github.com/Takayuki-Y5991/go-authentications/pkg/port/outbound"
 )
 
 // AuthIntegrationTestSuite はテストスイートの構造を定義します。
@@ -35,11 +40,27 @@ func TestAuthIntegration(t *testing.T) {
 
 // SetupSuite はテストスイート全体の前準備を行います。
 func (s *AuthIntegrationTestSuite) SetupSuite() {
+
 	s.Ctx = context.Background()
 
+	os.Setenv("APP_ENV", "test")
+	os.Setenv("AUTH0_DOMAIN", "localhost:8080")
+	os.Setenv("AUTH0_CLIENT_ID", "test-client")
+	os.Setenv("AUTH0_CLIENT_SECRET", "test-secret")
+	os.Setenv("AUTH0_REDIRECT_URL", "http://http://localhost:3000/callback")
+
+	// Load the configuration
+	cfg, err := config.LoadConfig()
+	s.Require().NoError(err, "Failed to load config")
+
+	// Initialize the Auth0Provider
+	authPort, err := auth0.NewAuth0Adapter(cfg, zap.NewNop())
+	s.Require().NoError(err, "Failed to initialize Auth0Provider")
+
+	// Start the Docker network
 	net, err := network.New(s.Ctx,
 		network.WithDriver("bridge"),
-		network.WithAttachable(), // Make the network attachable
+		network.WithAttachable(),
 		network.WithLabels(map[string]string{
 			"testcontainers": "true",
 		}),
@@ -48,7 +69,8 @@ func (s *AuthIntegrationTestSuite) SetupSuite() {
 	s.Network = net
 
 	// Start the gRPC server container
-	grpcServer, err := s.setupGRPCServer()
+	grpcServer, err := s.setupGRPCServer(authPort)
+
 	s.Require().NoError(err, "Failed to start gRPC server")
 	s.GRPCServer = grpcServer
 
@@ -60,7 +82,7 @@ func (s *AuthIntegrationTestSuite) SetupSuite() {
 	// Mock OAuth2サーバーのURLを取得
 	mappedPort, err := mockServer.MappedPort(s.Ctx, "8080")
 	s.Require().NoError(err)
-	s.MockServerURL = fmt.Sprintf("http://localhost:%s", mappedPort.Port())
+	s.MockServerURL = fmt.Sprintf("localhost:%s", mappedPort.Port())
 
 	// gRPCクライアントの初期化
 	conn, client, err := s.setupGRPCConnection()
@@ -69,7 +91,7 @@ func (s *AuthIntegrationTestSuite) SetupSuite() {
 	s.AuthService = client
 }
 
-func (s *AuthIntegrationTestSuite) setupGRPCServer() (testcontainers.Container, error) {
+func (s *AuthIntegrationTestSuite) setupGRPCServer(authPort outbound.AuthPort) (testcontainers.Container, error) {
 	req := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:    "../../../",  // Path to the directory containing the Dockerfile
@@ -82,7 +104,6 @@ func (s *AuthIntegrationTestSuite) setupGRPCServer() (testcontainers.Container, 
 			"AUTH0_DOMAIN":            s.MockServerURL,
 			"AUTH0_CLIENT_ID":         "test-client",
 			"AUTH0_CLIENT_SECRET":     "test-secret",
-			"AUTH0_AUDIENCE":          "test-api",
 			"AUTH0_REDIRECT_URL":      "http://localhost:3000/callback",
 			"SERVER_PORT":             "50051",
 			"SERVER_SHUTDOWN_TIMEOUT": "10",
@@ -105,6 +126,10 @@ func (s *AuthIntegrationTestSuite) setupGRPCServer() (testcontainers.Container, 
 	}
 
 	s.T().Logf("gRPC server is running on port: %s", mappedPort.Port())
+	authHandler := grpcD.NewAuthHandler(authPort, zap.NewNop())
+	router := grpcD.NewRouter(authHandler, zap.NewNop())
+	router.Setup()
+
 	return container, nil
 }
 
@@ -141,7 +166,17 @@ func (s *AuthIntegrationTestSuite) setupMockOAuthServer() (testcontainers.Contai
 									"name": "Test User",
 									"roles": ["user"]
 								}
-							}
+							},
+							{
+                                "requestParam": "code",
+                                "match": "test-auth-code",
+                                "claims": {
+                                    "sub": "subByCode",
+									"aud": [
+										"audByCode"
+									]
+                                }
+                            }
 						]
 					}
 				]
@@ -182,7 +217,7 @@ func (s *AuthIntegrationTestSuite) TearDownSuite() {
 }
 
 func (s *AuthIntegrationTestSuite) setupGRPCConnection() (*grpc.ClientConn, authv1.AuthenticationServiceClient, error) {
-	ctx, cancel := context.WithTimeout(s.Ctx, 180*time.Second) // Increased timeout
+	_, cancel := context.WithTimeout(s.Ctx, 180*time.Second) // Increased timeout
 	defer cancel()
 
 	// Get the mapped port for the gRPC server
@@ -192,27 +227,29 @@ func (s *AuthIntegrationTestSuite) setupGRPCConnection() (*grpc.ClientConn, auth
 	}
 
 	// Use the mapped port to connect to the gRPC server
-	conn, err := grpc.NewClient(
-		fmt.Sprintf("localhost:%s", mappedPort.Port()), // Use the mapped port
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create gRPC client: %w", err)
-	}
+	address := fmt.Sprintf("localhost:%s", mappedPort.Port())
+	var conn *grpc.ClientConn
+	var authClient authv1.AuthenticationServiceClient
 
-	s.T().Logf("Initial connection state: %v", conn.GetState())
-
-	// Wait for the connection to be ready
-	for state := conn.GetState(); state != connectivity.Ready; {
-		if !conn.WaitForStateChange(ctx, state) {
-			s.T().Logf("Connection timed out or failed, last state: %v", state)
-			return nil, nil, fmt.Errorf("connection timed out or failed, last state: %v", state)
+	// Retry mechanism
+	maxRetries := 10
+	for i := 0; i < maxRetries; i++ {
+		conn, err = grpc.NewClient(
+			address,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err == nil {
+			authClient = authv1.NewAuthenticationServiceClient(conn)
+			break
 		}
-		state = conn.GetState()
-		s.T().Logf("Connection state changed to: %v", state)
+		s.T().Logf("Attempt %d: failed to create gRPC client: %v", i+1, err)
+		time.Sleep(5 * time.Second) // Wait for 5 seconds before retrying
 	}
 
-	// Create authentication service client
-	authClient := authv1.NewAuthenticationServiceClient(conn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create gRPC client after %d retries: %w", maxRetries, err)
+	}
+
+	s.T().Logf("Successfully connected to gRPC server at %s", address)
 	return conn, authClient, nil
 }

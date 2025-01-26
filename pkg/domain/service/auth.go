@@ -45,6 +45,7 @@ func (s *AuthenticationService) ExchangeAuthorizationCode(ctx context.Context, c
 	if redirectURI == "" {
 		return nil, fmt.Errorf("redirect URI is required")
 	}
+	s.logger.Info("Received authorization code", zap.String("code", code))
 
 	tokenInfo, err := s.authProvider.ExchangeAuthorizationCode(ctx, code, redirectURI, codeVerifier, provider)
 	if err != nil {
